@@ -249,6 +249,11 @@ func (c *Collector) Init() {
 	c.robotsMap = make(map[string]*robotstxt.RobotsData)
 	c.IgnoreRobotsTxt = true
 	c.ID = atomic.AddUint32(&collectorCounter, 1)
+	c.requestCallbacks = make([]RequestCallback, 0, 4)
+	c.responseCallbacks = make([]ResponseCallback, 0, 4)
+	c.htmlCallbacks = make([]*htmlCallbackContainer, 0, 4)
+	c.errorCallbacks = make([]ErrorCallback, 0, 4)
+	c.scrapedCallbacks = make([]ScrapedCallback, 0, 4)
 }
 
 // Appengine will replace the Collector's backend http.Client
@@ -508,21 +513,15 @@ func (c *Collector) Wait() {
 // request made by the Collector
 func (c *Collector) OnRequest(f RequestCallback) {
 	c.lock.Lock()
-	if c.requestCallbacks == nil {
-		c.requestCallbacks = make([]RequestCallback, 0, 4)
-	}
+	defer c.lock.Unlock()
 	c.requestCallbacks = append(c.requestCallbacks, f)
-	c.lock.Unlock()
 }
 
 // OnResponse registers a function. Function will be executed on every response
 func (c *Collector) OnResponse(f ResponseCallback) {
 	c.lock.Lock()
-	if c.responseCallbacks == nil {
-		c.responseCallbacks = make([]ResponseCallback, 0, 4)
-	}
+	defer c.lock.Unlock()
 	c.responseCallbacks = append(c.responseCallbacks, f)
-	c.lock.Unlock()
 }
 
 // OnHTML registers a function. Function will be executed on every HTML
@@ -530,19 +529,17 @@ func (c *Collector) OnResponse(f ResponseCallback) {
 // GoQuery Selector is a selector used by https://github.com/PuerkitoBio/goquery
 func (c *Collector) OnHTML(goquerySelector string, f HTMLCallback) {
 	c.lock.Lock()
-	if c.htmlCallbacks == nil {
-		c.htmlCallbacks = make([]*htmlCallbackContainer, 0, 4)
-	}
+	defer c.lock.Unlock()
 	c.htmlCallbacks = append(c.htmlCallbacks, &htmlCallbackContainer{
 		Selector: goquerySelector,
 		Function: f,
 	})
-	c.lock.Unlock()
 }
 
 // OnHTMLDetach deregister a function. Function will not be execute after detached
 func (c *Collector) OnHTMLDetach(goquerySelector string) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	deleteIdx := -1
 	for i, cc := range c.htmlCallbacks {
 		if cc.Selector == goquerySelector {
@@ -553,29 +550,22 @@ func (c *Collector) OnHTMLDetach(goquerySelector string) {
 	if deleteIdx != -1 {
 		c.htmlCallbacks = append(c.htmlCallbacks[:deleteIdx], c.htmlCallbacks[deleteIdx+1:]...)
 	}
-	c.lock.Unlock()
 }
 
 // OnError registers a function. Function will be executed if an error
 // occurs during the HTTP request.
 func (c *Collector) OnError(f ErrorCallback) {
 	c.lock.Lock()
-	if c.errorCallbacks == nil {
-		c.errorCallbacks = make([]ErrorCallback, 0, 4)
-	}
+	defer c.lock.Unlock()
 	c.errorCallbacks = append(c.errorCallbacks, f)
-	c.lock.Unlock()
 }
 
 // OnScraped registers a function. Function will be executed after
 // OnHTML, as a final part of the scraping.
 func (c *Collector) OnScraped(f ScrapedCallback) {
 	c.lock.Lock()
-	if c.scrapedCallbacks == nil {
-		c.scrapedCallbacks = make([]ScrapedCallback, 0, 4)
-	}
+	defer c.lock.Unlock()
 	c.scrapedCallbacks = append(c.scrapedCallbacks, f)
-	c.lock.Unlock()
 }
 
 // WithTransport allows you to set a custom http.RoundTripper (transport)
